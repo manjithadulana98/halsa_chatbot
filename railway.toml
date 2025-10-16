@@ -1,5 +1,6 @@
+# railway.toml — FastAPI (Python 3) Deployment Config
+
 [build]
-builder = "Python"
 buildCommand = "pip install -r requirements.txt"
 
 [deploy]
