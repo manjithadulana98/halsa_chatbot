@@ -1,7 +1,0 @@
-# railway.toml — FastAPI (Python 3) Deployment Config
-
-[build]
-buildCommand = "pip install -r requirements.txt"
-
-[deploy]
-startCommand = "uvicorn api.app:app --host 0.0.0.0 --port 8080"
