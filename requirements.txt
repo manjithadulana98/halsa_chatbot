@@ -3,7 +3,7 @@ uvicorn
 python-dotenv
 pandas
 textblob
-langchain
+langchain==0.0.350
 langchain-openai
 langchain-community
 langchain-core
