@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hälsa Support Chatbot</title>
+  <style>
+    body {
+      font-family: "Segoe UI", sans-serif;
+      background: #f5f7fb;
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: #1a73e8;
+      color: white;
+      padding: 12px 20px;
+      font-size: 20px;
+      font-weight: 600;
+      text-align: center;
+    }
+    #chat-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .message {
+      max-width: 80%;
+      padding: 12px 16px;
+      border-radius: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .user {
+      align-self: flex-end;
+      background: #e3f2fd;
+    }
+    .bot {
+      align-self: flex-start;
+      background: #fff;
+      border: 1px solid #ddd;
+      position: relative;
+    }
+    footer {
+      display: flex;
+      padding: 12px;
+      background: #fff;
+      border-top: 1px solid #ccc;
+    }
+    input {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 15px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      outline: none;
+    }
+    button {
+      margin-left: 10px;
+      background: #1a73e8;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background: #155ec4;
+    }
+    .sources {
+      font-size: 12px;
+      color: #555;
+      margin-top: 4px;
+    }
+    .typing-indicator {
+      display: inline-block;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 0; }
+      50% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <header>🤖 Hälsa Support Chatbot</header>
+  <div id="chat-container"></div>
+  <footer>
+    <input id="user-input" placeholder="Ask something about Hälsa products..." />
+    <button onclick="sendMessage()">Send</button>
+  </footer>
+
+  <script>
+    const API_URL = "https://halsachatbot-production.up.railway.app/chat";
+    const SAVE_URL = "http://halsachatbot-production.up.railway.app/save_unanswered";
+    const chatContainer = document.getElementById("chat-container");
+    const userInput = document.getElementById("user-input");
+
+    // === Show intro message when chat loads ===
+    window.addEventListener("DOMContentLoaded", showIntro);
+
+    function showIntro() {
+      const intro = `
+    👋 Hello! I'm your Hälsa Support Assistant.
+    I can help you with:
+    • Device setup
+    • Troubleshooting
+    • Cleaning & maintenance
+    • Warranty and support info
+
+    Type your question below or select a quick option:
+    `;
+      appendMessage("bot", intro);
+
+      const quickOptions = [
+        { text: "Setup Help", question: "How do I set up my Hälsa device?" },
+        { text: "Troubleshooting", question: "My Hälsa hub won't connect to Wi-Fi." },
+        { text: "Warranty Info", question: "What is the Hälsa product warranty?" },
+        { text: "Contact Support", question: "How can I contact Hälsa customer care?" },
+      ];
+
+      const btnContainer = document.createElement("div");
+      btnContainer.style.display = "flex";
+      btnContainer.style.flexWrap = "wrap";
+      btnContainer.style.gap = "8px";
+      btnContainer.style.marginTop = "8px";
+
+      quickOptions.forEach(opt => {
+        const btn = document.createElement("button");
+        btn.textContent = opt.text;
+        btn.style.background = "#1a73e8";
+        btn.style.color = "#fff";
+        btn.style.border = "none";
+        btn.style.borderRadius = "8px";
+        btn.style.padding = "6px 12px";
+        btn.style.cursor = "pointer";
+        btn.onclick = () => {
+          userInput.value = opt.question;
+          sendMessage();
+          btnContainer.remove(); // Remove buttons after a selection
+        };
+        btnContainer.appendChild(btn);
+      });
+
+      chatContainer.appendChild(btnContainer);
+    }
+
+
+    async function sendMessage() {
+      const text = userInput.value.trim();
+      if (!text) return;
+
+      appendMessage("user", text);
+      userInput.value = "";
+
+      const botDiv = appendMessage("bot", "");
+      const typingIndicator = document.createElement("span");
+      typingIndicator.classList.add("typing-indicator");
+      typingIndicator.textContent = "▮";
+      botDiv.appendChild(typingIndicator);
+
+      try {
+        const res = await fetch(API_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: text }),
+        });
+        if (!res.ok) throw new Error("Request failed");
+        const data = await res.json();
+        typingIndicator.remove();
+
+        await typeText(botDiv, data.answer);
+
+        // Append sources
+        if (data.sources?.length) {
+          const srcDiv = document.createElement("div");
+          srcDiv.classList.add("sources");
+          srcDiv.textContent = "📚 Sources:\n" + data.sources.join("\n");
+          botDiv.appendChild(srcDiv);
+        }
+
+        // Check if manual lacks info
+        if (data.answer.includes("The manuals do not mention that specifically")) {
+          const saveBtn = document.createElement("button");
+          saveBtn.textContent = "💾 Save question for review";
+          saveBtn.style.marginTop = "8px";
+          saveBtn.onclick = async () => await saveUnanswered(text, botDiv, saveBtn);
+          botDiv.appendChild(saveBtn);
+        }
+
+      } catch (err) {
+        typingIndicator.remove();
+        botDiv.textContent = "⚠️ Error contacting the server.";
+        console.error(err);
+      }
+
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    async function saveUnanswered(question, botDiv, btn) {
+      btn.disabled = true;
+      btn.textContent = "Saving...";
+      try {
+        const res = await fetch(SAVE_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+        const data = await res.json();
+        btn.textContent = "✅ Saved";
+      } catch (err) {
+        console.error(err);
+        btn.textContent = "❌ Error saving";
+      }
+    }
+
+    async function typeText(element, text) {
+      const words = text.split(" ");
+      for (const word of words) {
+        element.textContent += word + " ";
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+        await new Promise((r) => setTimeout(r, 35));
+      }
+    }
+
+    function appendMessage(sender, text) {
+      const div = document.createElement("div");
+      div.classList.add("message", sender);
+      div.textContent = text;
+      chatContainer.appendChild(div);
+      chatContainer.scrollTop = chatContainer.scrollHeight;
+      return div;
+    }
+
+    userInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") sendMessage();
+    });
+  </script>
+
+</body>
+</html>
