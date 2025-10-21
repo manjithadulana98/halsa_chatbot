@@ -8,7 +8,7 @@ from textblob import TextBlob
 
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
-from langchain_community.chains import ConversationalRetrievalChain
+from langchain.chains import ConversationalRetrievalChain
 from langchain.prompts import PromptTemplate
 
 # ------------------------------------------------------------
