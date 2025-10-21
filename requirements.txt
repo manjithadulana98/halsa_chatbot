@@ -10,3 +10,4 @@ langchain-core==0.1.18
 faiss-cpu
 pypdf
 openpyxl
+pydantic==1.10.13
