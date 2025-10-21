@@ -3,11 +3,8 @@ uvicorn
 python-dotenv
 pandas
 textblob
-langchain==0.0.350
-langchain-openai
 langchain-community
-langchain-core
-langchain-text-splitters
+langchain-openai
 faiss-cpu
 pypdf
 openpyxl
