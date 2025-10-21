@@ -12,9 +12,6 @@ Thumbs.db
 .env
 *.env
 
-# Ignore FAISS index if rebuilding inside container
-index/faiss/
-
 # Ignore logs or saved unanswered questions
 *.log
 unanswered_questions.txt

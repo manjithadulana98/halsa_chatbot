@@ -7,6 +7,9 @@ WORKDIR /app
 # Copy your project files into the container
 COPY . /app
 
+# Ensure FAISS index is included
+COPY index/faiss /app/index/faiss
+
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
