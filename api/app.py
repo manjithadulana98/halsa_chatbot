@@ -2,21 +2,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import os
-from datetime import datetime
-from textblob import TextBlob
-
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain.chains import ConversationalRetrievalChain
 from langchain.prompts import PromptTemplate
+from datetime import datetime
+from typing import Optional
+import os
 
 # ------------------------------------------------------------
 # Setup
 # ------------------------------------------------------------
 load_dotenv()
 
-app = FastAPI(title="Halsa Product Chatbot API")
+app = FastAPI(title="Hälsa Product Chatbot API")
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,114 +30,104 @@ embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
 vectorstore = FAISS.load_local("index/faiss", embeddings, allow_dangerous_deserialization=True)
 print("✅ Index loaded successfully!")
 
-qa_template = """
-You are a helpful customer support assistant for Halsa products.
+# ------------------------------------------------------------
+# Prompt Templates
+# ------------------------------------------------------------
+qa_prompt = """
+You are a helpful customer support assistant for Hälsa products.
 Use ONLY the provided context from official manuals to answer questions.
 If relevant, include which manual and page number the information came from.
-If the manuals do not mention the topic, reply:
-"The manuals do not mention that specifically. Please contact Halsa support."
 
-All responses must be written in **clear, professional English**, even if the user asks in another language.
+If the manuals do not mention the topic, reply:
+"The manuals do not mention that specifically. Please contact Hälsa support."
+
+If the user's tone seems negative or frustrated, begin your response with an empathetic sentence.
+Always write in clear, professional English.
+
 ----------------
 {context}
 ----------------
-Question: {question}
+User's new question: {question}
 Helpful answer:
 """
-prompt = PromptTemplate(input_variables=["context", "question"], template=qa_template)
+
+prompt = PromptTemplate(input_variables=["context", "question"], template=qa_prompt)
+
+# Fast model for QA and summarization
+qa_model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+summarizer_model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
 qa_chain = ConversationalRetrievalChain.from_llm(
-    ChatOpenAI(model="gpt-4o-mini", temperature=0),
-    retriever=vectorstore.as_retriever(search_kwargs={"k": 8}),
+    qa_model,
+    retriever=vectorstore.as_retriever(search_kwargs={"k": 10}),
     return_source_documents=True,
     combine_docs_chain_kwargs={"prompt": prompt},
 )
 
-chat_history = []
-
 
 # ------------------------------------------------------------
-# Local sentiment + intent detection
-# ------------------------------------------------------------
-def analyze_local(text: str):
-    """Lightweight sentiment & intent detection using TextBlob."""
-    blob = TextBlob(text)
-    polarity = blob.sentiment.polarity
-
-    if any(w in text.lower() for w in ["hi", "hello", "hey"]):
-        intent = "greeting"
-    elif any(w in text.lower() for w in ["bye", "goodbye", "see you"]):
-        intent = "farewell"
-    elif any(w in text.lower() for w in ["thank", "thanks"]):
-        intent = "gratitude"
-    elif any(w in text.lower() for w in ["sorry", "apologize"]):
-        intent = "apology"
-    elif any(w in text.lower() for w in ["help", "issue", "problem", "error"]):
-        intent = "product_question"
-    else:
-        intent = "other"
-
-    if polarity > 0.3:
-        emotion = "positive"
-    elif polarity < -0.3:
-        emotion = "negative"
-    else:
-        emotion = "neutral"
-
-    return {"emotion": emotion, "intent": intent}
-
-
-# ------------------------------------------------------------
-# API Schemas
+# Schemas
 # ------------------------------------------------------------
 class ChatRequest(BaseModel):
     question: str
+    summary: Optional[str] = None  # optional summary from frontend
 
 
 # ------------------------------------------------------------
 # Routes
 # ------------------------------------------------------------
-@app.get("/")
-async def root():
-    return {"message": "✅ Halsa Chatbot API is running (fast mode)!"}
-
-
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    analysis = analyze_local(req.question)
-    emotion = analysis["emotion"]
-    intent = analysis["intent"]
-    print(f"🧠 Detected Emotion: {emotion} | Intent: {intent}")
+    """Stateless chat endpoint — uses summary from frontend and updates it."""
+    
+    # Step 1: Use summary from frontend if provided
+    local_summary = req.summary or ""
 
-    # --- Emotionally aware quick responses ---
-    if intent == "greeting":
-        return {"answer": "👋 Hello! I’m your Hälsa Support Assistant. How can I help today?", "sources": []}
-    if intent == "farewell":
-        return {"answer": "Goodbye 👋 and thank you for being part of the Hälsa family!", "sources": []}
-    if intent == "gratitude":
-        return {"answer": "You're very welcome! 💙 I'm glad I could help.", "sources": []}
-    if intent == "apology":
-        return {"answer": "No worries at all 😊 I'm here to help you with anything Hälsa-related!", "sources": []}
+    # Step 2: Combine summary with current question
+    context_text = f"""
+Previous Conversation Summary:
+{local_summary or "None yet."}
 
-    # --- Add empathy tone for negative emotion ---
-    empathy_prefix = ""
-    if emotion == "negative":
-        empathy_prefix = "I understand this might be frustrating 😔. Let's sort this out together.\n\n"
+New User Message:
+{req.question}
 
-    # --- Manual-based response ---
-    result = qa_chain({"question": req.question, "chat_history": chat_history})
-    chat_history.append((req.question, result["answer"]))
+Respond based on the summary above, but prioritize the new question.
+"""
 
+    # Step 3: Get QA response from manual context
+    result = qa_chain({"question": context_text, "chat_history": []})
+    answer = result["answer"]
+
+    # Step 4: Update chat summary using a small LLM call
+    summary_prompt = f"""
+Update the ongoing chat summary below by briefly including what the user just asked and how you responded.
+Keep it under 3 sentences.
+---
+Previous Summary:
+{local_summary}
+
+User: {req.question}
+Assistant: {answer}
+---
+New concise summary:
+"""
+    new_summary = summarizer_model.invoke(summary_prompt).content.strip()
+
+    print(f"🧾 Updated Summary (preview): {new_summary[:120]}...")
+
+    # Step 5: Extract sources
     sources = [
         f"{os.path.basename(doc.metadata.get('source', 'unknown'))} (page {doc.metadata.get('page_label', '?')})"
         for doc in result.get("source_documents", [])
     ]
-    return {"answer": empathy_prefix + result["answer"], "sources": sources}
+
+    return {
+        "answer": answer,
+        "sources": sources,
+        "summary": new_summary,  # send summary back to frontend
+    }
 
 
-@app.post("/save_unanswered")
-async def save_unanswered(req: ChatRequest):
-    log_path = "unanswered_questions.txt"
-    with open(log_path, "a", encoding="utf-8") as f:
-        f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] {req.question}\n")
-    return {"status": "saved", "message": "Question logged for review."}
+@app.get("/")
+async def root():
+    return {"message": "✅ Hälsa Chatbot API running with stateless summary-based memory!"}
