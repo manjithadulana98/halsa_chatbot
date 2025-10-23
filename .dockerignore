@@ -1,0 +1,28 @@
+# Ignore Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore system files
+.DS_Store
+Thumbs.db
+
+# Ignore environment/config
+.env
+*.env
+
+# Ignore logs or saved unanswered questions
+*.log
+unanswered_questions.txt
+
+# Ignore Git and virtual environment folders
+.git/
+.gitignore
+.venv/
+env/
+venv/
+
+# Ignore frontend build artifacts
+frontend/node_modules/
+frontend/dist/

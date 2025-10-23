@@ -5,7 +5,6 @@
 unanswered_questions.txt
 
 # Local data and indexes
-index/faiss/
 Halsa_Usermanuals/
 
 # Python cache
